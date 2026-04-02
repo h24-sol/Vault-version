@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Vault Messenger V14.0 - Master</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+    <style>
+        body { background: #020617; color: #f1f5f9; font-family: sans-serif; overflow: hidden; }
+        .glass { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }
+        .hidden { display: none !important; }
+        .neon-border { box-shadow: 0 0 15px rgba(34, 211, 238, 0.3); border: 1px solid rgba(34, 211, 238, 0.5); }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center p-4">
+
+    <div id="lockScreen" class="fixed inset-0 z-[100] bg-[#020617] flex items-center justify-center p-6 text-center">
+        <div>
+            <h1 class="text-2xl font-black mb-6 uppercase tracking-widest text-white italic">Vault Terminal</h1>
+            <input type="password" id="pinDisplay" placeholder="••••" readonly class="w-44 bg-black/60 border border-cyan-500/30 rounded-3xl p-5 text-4xl text-cyan-400 text-center outline-none mb-10 shadow-lg">
+            <div class="grid grid-cols-3 gap-4 max-w-[300px] mx-auto">
+                <script>
+                    for(let i=1; i<=9; i++) document.write(`<button onclick="press('${i}')" class="bg-white/5 py-6 rounded-3xl font-bold text-2xl active:bg-cyan-500 transition-all text-white">${i}</button>`);
+                </script>
+                <button onclick="clearPin()" class="bg-red-500/10 text-red-500 py-6 rounded-3xl">✕</button>
+                <button onclick="press('0')" class="bg-white/5 py-6 rounded-3xl text-2xl text-white">0</button>
+                <button onclick="verify()" class="bg-cyan-500 text-black py-6 rounded-3xl font-black">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="appContainer" class="hidden w-full max-w-[450px] glass rounded-[3rem] p-8 shadow-2xl overflow-y-auto max-h-[90vh]">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-xl font-black italic uppercase">Vault <span class="text-cyan-500">v14.0</span></h1>
+            <button onclick="checkAdmin()" class="opacity-10 text-[10px]">ADMIN</button>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <label class="bg-black/40 p-4 rounded-2xl border border-white/5 cursor-pointer text-center">
+                <span id="shadowStat" class="text-[10px] font-black text-cyan-400">UPLOAD IMAGE</span>
+                <input type="file" id="imgInput" class="hidden" accept="image/*" onchange="handleImg(this)">
+            </label>
+            <div class="bg-black/40 p-4 rounded-2xl border border-white/5 text-center">
+                <span class="text-[8px] block text-slate-500 font-black mb-1">MATRIX KEY</span>
+                <input type="number" id="shift" value="12" class="bg-transparent text-cyan-400 font-black outline-none w-12 text-center">
+            </div>
+        </div>
+
+        <textarea id="msgInput" placeholder="Type secret message or /admin..." class="w-full bg-black/60 border border-slate-800 rounded-3xl p-5 h-32 mb-6 outline-none text-sm text-slate-300 resize-none"></textarea>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <button onclick="run('enc')" class="bg-cyan-500 text-black py-4 rounded-xl font-black uppercase text-xs shadow-lg">Encrypt</button>
+            <button onclick="run('dec')" class="bg-slate-800 text-white py-4 rounded-xl font-black uppercase text-xs">Decrypt</button>
+        </div>
+
+        <div id="resArea" class="hidden p-6 bg-cyan-500/5 rounded-[2rem] border border-cyan-500/20">
+            <p id="resText" class="text-center break-all text-xs mb-4 text-cyan-100 font-mono"></p>
+            <img id="resImg" class="w-full rounded-xl shadow-2xl mb-4">
+            <button onclick="saveResult()" class="w-full bg-white text-black py-4 rounded-xl font-black text-xs uppercase">Download / Copy</button>
+        </div>
+    </div>
+
+    <div id="payModal" class="hidden fixed inset-0 z-[200] bg-black/95 flex items-center justify-center p-6">
+        <div class="glass p-8 rounded-[2.5rem] w-full max-w-sm text-center">
+            <h2 class="text-cyan-400 font-black text-lg mb-2 uppercase">Decryption Locked</h2>
+            <p class="text-[9px] text-slate-500 mb-6 uppercase tracking-widest">Verify payment to unlock Shadow Matrix</p>
+            <div id="payOptions" class="space-y-3">
+                <button onclick="showTrx('bKash: 01774460656')" class="w-full bg-[#D12053] py-4 rounded-xl font-bold text-white">bKash</button>
+                <button onclick="showTrx('SOL: HBxdLgDcfHr8cdZuG5K2mKhr3XxLjWH2yrFS7Pg7mg9Q')" class="w-full bg-gradient-to-r from-purple-600 to-green-400 py-4 rounded-xl font-black text-black text-sm italic">SOLANA PAY</button>
+            </div>
+            <div id="trxInputArea" class="hidden mt-4">
+                <p id="addr" class="text-[10px] mb-4 text-cyan-300 font-mono break-all"></p>
+                <input type="text" id="trxId" placeholder="ENTER TRANSACTION ID" class="w-full bg-black border border-slate-700 p-4 rounded-xl text-center mb-4 text-cyan-400 font-bold outline-none">
+                <button onclick="submitTrx()" class="w-full bg-cyan-500 text-black py-4 rounded-xl font-black">VERIFY NOW</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="adminPanel" class="hidden fixed inset-0 z-[300] bg-[#020617] p-8 overflow-y-auto">
+        <div class="flex justify-between items-center mb-8">
+            <h2 class="text-2xl font-black text-cyan-400 italic">ADMIN GATEWAY</h2>
+            <button onclick="closeAdmin()" class="text-white bg-white/10 px-4 py-2 rounded-lg text-xs">EXIT</button>
+        </div>
+        <div id="adminList" class="space-y-4">
+            <p class="text-slate-600 text-center font-black animate-pulse">FETCHING TRANSACTIONS...</p>
+        </div>
+    </div>
+
+    <canvas id="matrixCanvas" style="display:none;"></canvas>
+
+    <script>
+        // CONFIGURATION
+        const firebaseConfig = {
+            apiKey: "AIzaSyBhTOWBvfqDvmDW03FOF5OqEq8HRv5dMME",
+            authDomain: "vault-messenger-fcb60.firebaseapp.com",
+            projectId: "vault-messenger-fcb60",
+            databaseURL: "https://vault-messenger-fcb60-default-rtdb.firebaseio.com/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentPin = "", shadowData = null, isPaid = false;
+
+        // PIN LOGIC
+        function press(n) { if(currentPin.length < 4) currentPin += n; document.getElementById('pinDisplay').value = currentPin; }
+        function clearPin() { currentPin = ""; document.getElementById('pinDisplay').value = ""; }
+        function verify() {
+            const savedPin = localStorage.getItem('v14_pin') || "1234"; 
+            if(!localStorage.getItem('v14_pin')) localStorage.setItem('v14_pin', currentPin);
+            
+            if(currentPin === savedPin) {
+                document.getElementById('lockScreen').classList.add('hidden');
+                document.getElementById('appContainer').classList.remove('hidden');
+            } else {
+                alert("ACCESS DENIED");
+                clearPin();
+            }
+        }
+
+        // IMAGE HANDLING
+        function handleImg(input) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                shadowData = e.target.result;
+                document.getElementById('shadowStat').innerText = "IMAGE READY";
+                document.getElementById('shadowStat').classList.add('text-green-400');
+            };
+            reader.readAsDataURL(input.files[0]);
+        }
+
+        // CORE ENGINE: SHADOW MATRIX
+        async function run(mode) {
+            const text = document.getElementById('msgInput').value;
+            
+            // Check for /admin command
+            if (text.trim() === "/admin" && mode === 'dec') {
+                openAdmin();
+                return;
+            }
+
+            // Payment Gate for Decryption
+            if(mode === 'dec' && shadowData && !isPaid) {
+                document.getElementById('payModal').classList.remove('hidden');
+                return;
+            }
+
+            const shift = parseInt(document.getElementById('shift').value);
+            document.getElementById('resArea').classList.remove('hidden');
+
+            if(shadowData) {
+                const img = new Image();
+                img.src = shadowData;
+                await new Promise(r => img.onload = r);
+                const cvs = document.getElementById('matrixCanvas');
+                const ctx = cvs.getContext('2d');
+                cvs.width = img.width; cvs.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                const imgData = ctx.getImageData(0,0,cvs.width,cvs.height);
+                
+                let seed = shift;
+                for(let i=0; i<imgData.data.length; i+=4) {
+                    imgData.data[i] ^= (seed % 255);
+                    seed = (seed * 16807) % 2147483647;
+                }
+                ctx.putImageData(imgData, 0, 0);
+                document.getElementById('resImg').src = cvs.toDataURL("image/png");
+                document.getElementById('resText').innerText = "MATRIX TRANSFORMATION COMPLETE";
+            } else {
+                const s = mode === 'enc' ? shift : -shift;
+                document.getElementById('resText').innerText = text.split('').map(c => String.fromCharCode(c.charCodeAt(0) + s)).join('');
+                document.getElementById('resImg').src = "";
+            }
+        }
+
+        // DOWNLOAD LOGIC (Android Compatible)
+        function saveResult() {
+            const imgPath = document.getElementById('resImg').src;
+            if(imgPath && imgPath.startsWith('data:image')) {
+                const link = document.createElement('a');
+                link.href = imgPath;
+                link.download = `VAULT_${Date.now()}.png`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            } else {
+                const txt = document.getElementById('resText').innerText;
+                navigator.clipboard.writeText(txt);
+                alert("Text Copied to Clipboard");
+            }
+        }
+
+        // PAYMENT SYSTEM
+        function showTrx(addr) {
+            document.getElementById('addr').innerText = addr;
+            document.getElementById('payOptions').classList.add('hidden');
+            document.getElementById('trxInputArea').classList.remove('hidden');
+        }
+
+        function submitTrx() {
+            const trx = document.getElementById('trxId').value;
+            if(!trx) return;
+            const ref = db.ref('vault_payments').push();
+            ref.set({ trx: trx, status: 'pending', timestamp: Date.now() });
+            
+            // Listen for approval
+            ref.on('value', (snap) => {
+                if(snap.val()?.status === 'approved') {
+                    isPaid = true;
+                    document.getElementById('payModal').classList.add('hidden');
+                    alert("PAYMENT VERIFIED. MATRIX UNLOCKED.");
+                    run('dec');
+                }
+            });
+            alert("Transaction submitted. Waiting for Admin approval...");
+        }
+
+        // ADMIN PANEL ENGINE
+        function openAdmin() {
+            document.getElementById('adminPanel').classList.remove('hidden');
+            db.ref('vault_payments').on('value', (snap) => {
+                const list = document.getElementById('adminList');
+                list.innerHTML = "";
+                snap.forEach(child => {
+                    const data = child.val();
+                    if(data.status === 'pending') {
+                        list.innerHTML += `
+                            <div class="bg-white/5 p-5 rounded-2xl flex justify-between items-center border border-white/10">
+                                <div>
+                                    <p class="text-[10px] text-slate-500 uppercase font-bold">Pending Trx</p>
+                                    <p class="text-cyan-400 font-mono font-bold">${data.trx}</p>
+                                </div>
+                                <button onclick="approvePayment('${child.key}')" class="bg-cyan-500 text-black px-6 py-3 rounded-xl font-black text-[10px]">APPROVE</button>
+                            </div>`;
+                    }
+                });
+            });
+        }
+        function approvePayment(key) {
+            db.ref('vault_payments/' + key).update({ status: 'approved' });
+        }
+        function closeAdmin() { document.getElementById('adminPanel').classList.add('hidden'); }
+    </script>
+</body>
+</html>
